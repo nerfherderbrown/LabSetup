@@ -1,0 +1,88 @@
+sudo yum upgrade -y
+sudo yum update -y
+sudo yum install java -y
+
+sudo firewall-cmd --zone=public --permanent --add-port 9200/tcp
+sudo firewall-cmd --zone=public --permanent --add-port 9600/tcp
+sudo firewall-cmd --zone=public --permanent --add-port 5601/tcp
+sudo firewall-cmd --zone=public --permanent --add-port 5044/tcp
+
+sudo firewall-cmd --list-all
+
+### Repo Setup ###
+rpm --import https://artifacts.elastic.co/GPG-KEY-elasticsearch
+
+# Elasticsearch Repo #
+touch /etc/yum.repos.d/elasticsearch.repo
+cat > /etc/yum.repos.d/elasticsearch.repo << ENDOFFILE
+[elasticsearch]
+name=Elasticsearch repository for 7.x packages
+baseurl=https://artifacts.elastic.co/packages/7.x/yum
+gpgcheck=1
+gpgkey=https://artifacts.elastic.co/GPG-KEY-elasticsearch
+enabled=0
+autorefresh=1
+type=rpm-md
+ENDOFFILE
+
+# Kibana Repo #
+touch /etc/yum.repos.d/kibana.repo
+cat > /etc/yum.repos.d/kibana.repo << ENDOFFILE
+[kibana-7.x]
+name=Kibana repository for 7.x packages
+baseurl=https://artifacts.elastic.co/packages/7.x/yum
+gpgcheck=1
+gpgkey=https://artifacts.elastic.co/GPG-KEY-elasticsearch
+enabled=1
+autorefresh=1
+type=rpm-md
+ENDOFFILE
+
+# Logstash Repo #
+touch /etc/yum.repos.d/logstash.repo
+cat > /etc/yum.repos.d/logstash.repo << ENDOFFILE
+[logstash-7.x]
+name=Elastic repository for 7.x packages
+baseurl=https://artifacts.elastic.co/packages/7.x/yum
+gpgcheck=1
+gpgkey=https://artifacts.elastic.co/GPG-KEY-elasticsearch
+enabled=1
+autorefresh=1
+type=rpm-md
+ENDOFFILE
+
+reboot
+!
+
+### Elasticsearch Install ###
+sudo dnf install --enablerepo=elasticsearch elasticsearch -y
+sudo /bin/systemctl daemon-reload
+sudo /bin/systemctl enable elasticsearch.service
+sudo systemctl start elasticsearch.service
+
+curl -X GET "localhost:9200/?pretty"
+!
+### Kibana Install ###
+sudo dnf install --enablerepo=kibana-7.x kibana -y
+sudo /bin/systemctl daemon-reload
+sudo /bin/systemctl enable kibana.service
+
+vi /etc/kibana/kibana.yml
+
+sudo systemctl start kibana.service
+
+### Logstash Install ###
+sudo dnf install --enablerepo=logstash-7.x logstash -y
+sudo /usr/share/logstash/bin/system-install /etc/logstash/startup.options systemd
+sudo systemctl enable logstash.service
+sudo systemctl start logstash.service
+
+### FileBeat Install ###
+sudo dnf install filebeat -y
+sudo systemctl enable filebeat
+vi /etc/filebeat/filebeat.yml
+
+
+filebeat setup --index-management -E output.logstash.enabled=false -E 'output.elasticsearch.hosts=["localhost:9200"]'
+filebeat setup --dashboards
+sudo systemctl start filebeat
